@@ -1,0 +1,473 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Object 279 Control</title>
+<style>
+  :root {
+    --bg: #15120e;
+    --panel: #201b14;
+    --panel2: #2a231a;
+    --text: #e8ddcc;
+    --muted: #9a8c74;
+    --accent: #ff8c2e;
+    --accent2: #e0452a;
+    --ok: #7fbf5f;
+    --err: #e06050;
+    --border: #3a3022;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
+    font-size: 14px;
+    padding: 16px;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  h1 {
+    font-size: 18px; letter-spacing: 0.08em; margin: 0 0 4px;
+    color: var(--accent);
+  }
+  .sub { color: var(--muted); font-size: 12px; margin-bottom: 16px; }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin-bottom: 14px;
+  }
+  .card h2 {
+    font-size: 13px; margin: 0 0 10px; color: var(--muted);
+    letter-spacing: 0.1em; text-transform: uppercase;
+  }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  button {
+    background: var(--panel2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 14px;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  button:hover:not(:disabled) { border-color: var(--accent); }
+  button:disabled { opacity: 0.4; cursor: default; }
+  button.primary { background: var(--accent); color: #1a120a; font-weight: 700; border: none; }
+  button.danger { background: var(--accent2); color: #fff; font-weight: 700; border: none; }
+  button.active { outline: 2px solid var(--accent); }
+  .stop-big { width: 100%; padding: 14px; font-size: 16px; letter-spacing: 0.2em; }
+  .slider-row {
+    display: grid;
+    grid-template-columns: 110px 1fr 52px;
+    gap: 10px; align-items: center;
+    padding: 6px 0;
+  }
+  .slider-row label { color: var(--text); }
+  .slider-row .pct { text-align: right; color: var(--accent); font-variant-numeric: tabular-nums; }
+  input[type=range] {
+    width: 100%; accent-color: var(--accent); height: 22px;
+  }
+  input[type=password] {
+    background: var(--panel2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 14px;
+    width: 130px;
+  }
+  .conn-state { margin-left: auto; font-size: 13px; color: var(--err); }
+  .conn-state.on { color: var(--ok); }
+  #log {
+    background: #0e0c08;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    height: 180px;
+    overflow-y: auto;
+    padding: 8px 10px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 12px;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+  #log .tx { color: var(--muted); }
+  #log .ok { color: var(--ok); }
+  #log .err { color: var(--err); }
+  .toggle { display: flex; align-items: center; gap: 10px; }
+  details summary {
+    cursor: pointer; font-size: 13px; color: var(--muted);
+    letter-spacing: 0.1em; text-transform: uppercase;
+  }
+  table.pins {
+    width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px;
+  }
+  table.pins th, table.pins td {
+    border-bottom: 1px solid var(--border);
+    padding: 6px 8px; text-align: left;
+  }
+  table.pins th { color: var(--muted); font-weight: 600; font-size: 12px; }
+  table.pins td.gpio { color: var(--accent); font-family: ui-monospace, Menlo, monospace; }
+  .pins-note { color: var(--muted); font-size: 12px; margin-top: 8px; line-height: 1.6; }
+  .notice {
+    background: var(--panel2); border: 1px solid var(--accent2);
+    border-radius: 8px; padding: 10px 12px; margin-bottom: 14px;
+    font-size: 13px; display: none;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>OBJECT 279 — EFFECTS CONTROL</h1>
+  <div class="sub">USBシリアル (Web Serial) / Bluetooth LE (Web Bluetooth)</div>
+
+  <div class="notice" id="unsupported"></div>
+
+  <div class="card">
+    <div class="row">
+      <button id="btnConnect" class="primary">USB接続</button>
+      <button id="btnBle" class="primary">BLE接続</button>
+      <input id="passcode" type="password" placeholder="BLEパスコード" autocomplete="off">
+      <button id="btnDisconnect" disabled>切断</button>
+      <button id="btnStatus" disabled>status</button>
+      <span class="conn-state" id="connState">未接続</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>モード</h2>
+    <div class="row">
+      <button class="mode" data-mode="manual" disabled>MANUAL</button>
+      <button class="mode" data-mode="demo" disabled>DEMO</button>
+      <button class="mode" data-mode="test" disabled>TEST</button>
+      <button id="btnStart" disabled>▶ start</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>LED調光 (MANUAL / TEST)</h2>
+    <div id="ledSliders"></div>
+  </div>
+
+  <div class="card">
+    <h2>ファン・ミスト (MANUAL / TEST)</h2>
+    <div id="fanSliders"></div>
+    <div class="toggle" style="margin-top:8px">
+      <button id="btnMistOn" disabled>ミスト ON</button>
+      <button id="btnMistOff" disabled>ミスト OFF</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <button id="btnStop" class="danger stop-big" disabled>■ STOP — 全出力停止</button>
+  </div>
+
+  <div class="card">
+    <h2>ログ</h2>
+    <div id="log"></div>
+  </div>
+
+  <div class="card">
+    <details>
+      <summary>ピン配置 (ESP32 → MOSFETモジュール)</summary>
+      <table class="pins">
+        <tr><th>系統</th><th>コマンド名</th><th>GPIO</th><th>負荷</th></tr>
+        <tr><td>噴射炎 フィラメント</td><td>main</td><td class="gpio">25</td><td>MMFIL-WW (80Ω直列, ≈25mA)</td></tr>
+        <tr><td>噴射炎 オレンジ</td><td>orange</td><td class="gpio">26</td><td>チップLED オレンジ</td></tr>
+        <tr><td>噴射炎 赤</td><td>red</td><td class="gpio">27</td><td>チップLED 赤</td></tr>
+        <tr><td>着弾炎 オレンジ</td><td>fireorange</td><td class="gpio">14</td><td>チップLED オレンジ</td></tr>
+        <tr><td>着弾炎 赤</td><td>firered</td><td class="gpio">13</td><td>チップLED 赤</td></tr>
+        <tr><td>煙ファン</td><td>smoke</td><td class="gpio">33</td><td>3010ブロワ 5V 0.15A</td></tr>
+        <tr><td>演出ファン</td><td>effect</td><td class="gpio">23</td><td>3010ブロワ 5V 0.15A</td></tr>
+        <tr><td>ミスト</td><td>mist</td><td class="gpio">32</td><td>超音波ミスト (≈300–400mA)</td></tr>
+      </table>
+      <div class="pins-note">
+        各GPIO→モジュールのPWM+、PWM−はESP32のGNDへ(負荷側GNDとは絶縁)。
+        モジュールのDC+/−に負荷用5V。全chとも入力表示LEDを除去・ブリッジ改造済み(3.3V駆動対応)。<br>
+        使用禁止ピン: 0, 2, 12, 15 (ブートストラップ) / 1, 3 (UART0) / 34–39 (入力専用) / 6–11 (フラッシュ)。
+      </div>
+    </details>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+const LED_CHANNELS = [
+  { id: "main",       label: "噴射 フィラメント" },
+  { id: "orange",     label: "噴射 オレンジ" },
+  { id: "red",        label: "噴射 赤" },
+  { id: "fireorange", label: "着弾 オレンジ" },
+  { id: "firered",    label: "着弾 赤" },
+];
+const FAN_CHANNELS = [
+  { id: "smoke",  label: "ファン 搬送" },
+  { id: "effect", label: "ファン 揺らぎ" },
+];
+
+let port = null;
+let writer = null;
+let currentReader = null;
+let bleDevice = null;
+let bleRxChar = null;  // 書き込み先キャラクタリスティック (ESP32側RX)
+
+// Nordic UART Service (ファームウェアの ble_serial.cpp と同じUUID)
+const NUS_SERVICE = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
+const NUS_RX = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
+const NUS_TX = "6e400003-b5a3-f393-e0a9-e50e24dcca9e";
+
+const $ = (id) => document.getElementById(id);
+const log = $("log");
+
+function appendLog(text, cls) {
+  const line = document.createElement("div");
+  if (cls) line.className = cls;
+  line.textContent = text;
+  log.appendChild(line);
+  log.scrollTop = log.scrollHeight;
+  while (log.childNodes.length > 400) log.removeChild(log.firstChild);
+}
+
+function setConnected(on, label) {
+  $("connState").textContent = on ? `接続中 (${label})` : "未接続";
+  $("connState").classList.toggle("on", on);
+  $("btnConnect").disabled = on || !("serial" in navigator);
+  $("btnBle").disabled = on || !("bluetooth" in navigator);
+  $("btnDisconnect").disabled = !on;
+  for (const el of document.querySelectorAll("button.mode, #btnStart, #btnStop, #btnStatus, #btnMistOn, #btnMistOff")) {
+    el.disabled = !on;
+  }
+  for (const el of document.querySelectorAll("input[type=range]")) {
+    el.disabled = !on;
+  }
+}
+
+// GATT操作は同時に1つしか実行できないため、送信はキューで直列化する
+let sendChain = Promise.resolve();
+function send(line) {
+  sendChain = sendChain
+    .then(async () => {
+      const data = new TextEncoder().encode(line + "\n");
+      if (writer) {
+        await writer.write(data);
+      } else if (bleRxChar) {
+        if (bleRxChar.writeValueWithoutResponse) {
+          await bleRxChar.writeValueWithoutResponse(data);
+        } else {
+          await bleRxChar.writeValue(data);
+        }
+      } else {
+        return;
+      }
+      appendLog("> " + line, "tx");
+    })
+    .catch((e) => {
+      appendLog("送信エラー: " + e.message, "err");
+    });
+  return sendChain;
+}
+
+// 受信データを行単位に組み立ててログへ流す (USB/BLE共用)
+let rxBuf = "";
+function feedData(text) {
+  rxBuf += text;
+  let idx;
+  while ((idx = rxBuf.indexOf("\n")) >= 0) {
+    const line = rxBuf.slice(0, idx).replace(/\r$/, "");
+    rxBuf = rxBuf.slice(idx + 1);
+    if (line.length === 0) continue;
+    const cls = line.startsWith("ok:") ? "ok" : line.startsWith("error:") ? "err" : "";
+    appendLog(line, cls);
+  }
+}
+
+async function readLoop() {
+  const decoder = new TextDecoder();
+  currentReader = port.readable.getReader();
+  try {
+    for (;;) {
+      const { value, done } = await currentReader.read();
+      if (done) break;
+      feedData(decoder.decode(value, { stream: true }));
+    }
+  } catch (e) {
+    appendLog("受信終了: " + e.message, "err");
+  } finally {
+    currentReader.releaseLock();
+    currentReader = null;
+  }
+}
+
+async function connect() {
+  try {
+    port = await navigator.serial.requestPort();
+    await port.open({ baudRate: 115200 });
+    writer = port.writable.getWriter();
+    setConnected(true, "USB");
+    appendLog("--- USB接続しました ---", "ok");
+    readLoop();
+  } catch (e) {
+    appendLog("接続失敗: " + e.message, "err");
+    port = null;
+  }
+}
+
+async function bleConnect() {
+  try {
+    bleDevice = await navigator.bluetooth.requestDevice({
+      filters: [{ services: [NUS_SERVICE] }],
+    });
+    bleDevice.addEventListener("gattserverdisconnected", () => {
+      bleRxChar = null;
+      setConnected(false);
+      appendLog("--- BLEが切断されました ---", "err");
+    });
+    const server = await bleDevice.gatt.connect();
+    const svc = await server.getPrimaryService(NUS_SERVICE);
+    bleRxChar = await svc.getCharacteristic(NUS_RX);
+    const tx = await svc.getCharacteristic(NUS_TX);
+    await tx.startNotifications();
+    tx.addEventListener("characteristicvaluechanged", (e) => {
+      feedData(new TextDecoder().decode(e.target.value));
+    });
+    setConnected(true, "BLE");
+    appendLog("--- BLE接続しました: " + (bleDevice.name || "OBJ279") + " ---", "ok");
+    // パスコードで自動認証 (未認証のままだとファームウェアが30秒で切断する)
+    const code = $("passcode").value.trim();
+    if (code) {
+      try { localStorage.setItem("obj279_passcode", code); } catch (_) {}
+      await send("auth " + code);
+    } else {
+      appendLog("パスコード未入力です。auth <コード> を送るまで操作できません", "err");
+    }
+  } catch (e) {
+    appendLog("BLE接続失敗: " + e.message, "err");
+    bleDevice = null;
+    bleRxChar = null;
+  }
+}
+
+async function disconnect() {
+  try {
+    // 受信ループを止めてポートのロックを解放してから閉じる
+    if (currentReader) { await currentReader.cancel().catch(() => {}); }
+    if (writer) { writer.releaseLock(); writer = null; }
+    if (port) { await port.close(); port = null; }
+    if (bleDevice?.gatt?.connected) bleDevice.gatt.disconnect();
+    bleDevice = null;
+    bleRxChar = null;
+  } catch (e) {
+    appendLog("切断エラー: " + e.message, "err");
+  }
+  setConnected(false);
+  appendLog("--- 切断しました ---");
+}
+
+// スライダー: ドラッグ中は100ms間隔に間引いて送信する
+function makeSlider(container, prefix, ch) {
+  const row = document.createElement("div");
+  row.className = "slider-row";
+  const pct = document.createElement("span");
+  pct.className = "pct";
+  pct.textContent = "0%";
+  const input = document.createElement("input");
+  input.type = "range";
+  input.min = "0"; input.max = "100"; input.value = "0";
+  input.disabled = true;
+  const label = document.createElement("label");
+  label.textContent = ch.label;
+
+  let timer = null;
+  let pending = null;
+  const flush = () => {
+    timer = null;
+    if (pending !== null) {
+      send(`${prefix} ${ch.id} ${(pending / 100).toFixed(2)}`);
+      pending = null;
+    }
+  };
+  input.addEventListener("input", () => {
+    pct.textContent = input.value + "%";
+    pending = Number(input.value);
+    if (!timer) {
+      flush();
+      timer = setTimeout(flush, 100);
+    }
+  });
+
+  row.append(label, input, pct);
+  container.appendChild(row);
+  return input;
+}
+
+const ledInputs = LED_CHANNELS.map((ch) => makeSlider($("ledSliders"), "led", ch));
+const fanInputs = FAN_CHANNELS.map((ch) => makeSlider($("fanSliders"), "fan", ch));
+
+function resetSliders() {
+  for (const el of [...ledInputs, ...fanInputs]) {
+    el.value = "0";
+    el.dispatchEvent(new Event("input"));
+  }
+}
+
+$("btnConnect").addEventListener("click", connect);
+$("btnBle").addEventListener("click", bleConnect);
+$("btnDisconnect").addEventListener("click", disconnect);
+$("btnStatus").addEventListener("click", () => send("status"));
+$("btnStart").addEventListener("click", () => send("start"));
+$("btnMistOn").addEventListener("click", () => send("mist on"));
+$("btnMistOff").addEventListener("click", () => send("mist off"));
+$("btnStop").addEventListener("click", () => {
+  send("stop");
+  // ファームウェア側も全OFFになるため表示を合わせる
+  for (const el of [...ledInputs, ...fanInputs]) {
+    el.value = "0";
+    el.nextElementSibling.textContent = "0%";
+  }
+});
+
+for (const btn of document.querySelectorAll("button.mode")) {
+  btn.addEventListener("click", () => {
+    send("mode " + btn.dataset.mode);
+    for (const b of document.querySelectorAll("button.mode")) b.classList.remove("active");
+    btn.classList.add("active");
+    // モード切替でファームウェアは全出力OFFになる
+    for (const el of [...ledInputs, ...fanInputs]) {
+      el.value = "0";
+      el.nextElementSibling.textContent = "0%";
+    }
+  });
+}
+
+try {
+  const saved = localStorage.getItem("obj279_passcode");
+  if (saved) $("passcode").value = saved;
+} catch (_) {}
+
+{
+  const hasSerial = "serial" in navigator;
+  const hasBle = "bluetooth" in navigator;
+  $("btnConnect").disabled = !hasSerial;
+  $("btnBle").disabled = !hasBle;
+  if (!hasSerial && !hasBle) {
+    $("unsupported").textContent =
+      "このブラウザはWeb Serial/Web Bluetoothに対応していません。Chrome/Edgeで開いてください。" +
+      "AndroidではHTTPSのURLから開く必要があります。";
+    $("unsupported").style.display = "block";
+  } else if (!hasBle && window.isSecureContext === false) {
+    $("unsupported").textContent =
+      "HTTPSではないためWeb Bluetoothが使えません。HTTPSのURLから開いてください。";
+    $("unsupported").style.display = "block";
+  }
+}
+
+navigator.serial?.addEventListener?.("disconnect", () => {
+  appendLog("--- デバイスが切断されました ---", "err");
+  writer = null; port = null;
+  setConnected(false);
+});
+</script>
+</body>
+</html>
