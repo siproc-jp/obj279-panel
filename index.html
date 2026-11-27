@@ -447,9 +447,7 @@ const PARAM_GROUPS = [
     ...flickerDefs("flame", 0.12, 1.0, 1500, 4000, ENVP),
     ...flickerDefs("fire", 0.30, 1.0, 1500, 5000, ENVP),
   ]},
-  { title: "ミスト・搬送ファン", params: [
-    { name: "mist.on", def: 0.65, ...LVL },
-    { name: "mist.off", def: 0.40, ...LVL },
+  { title: "搬送ファン (ミストはDEMO中常時ON)", params: [
     { name: "smoke.min", def: 0.30, ...LVL },
     { name: "smoke.max", def: 1.00, ...LVL },
   ]},
