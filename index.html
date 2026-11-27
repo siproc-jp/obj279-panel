@@ -111,6 +111,10 @@
   table.pins th { color: var(--muted); font-weight: 600; font-size: 12px; }
   table.pins td.gpio { color: var(--accent); font-family: ui-monospace, Menlo, monospace; }
   .pins-note { color: var(--muted); font-size: 12px; margin-top: 8px; line-height: 1.6; }
+  .param-h {
+    color: var(--accent); font-size: 12px; letter-spacing: 0.08em;
+    margin: 12px 0 2px; border-bottom: 1px solid var(--border); padding-bottom: 3px;
+  }
   .notice {
     background: var(--panel2); border: 1px solid var(--accent2);
     border-radius: 8px; padding: 10px 12px; margin-bottom: 14px;
@@ -158,6 +162,16 @@
       <button id="btnMistOn" disabled>ミスト ON</button>
       <button id="btnMistOff" disabled>ミスト OFF</button>
     </div>
+  </div>
+
+  <div class="card">
+    <details>
+      <summary>パラメータ調整 (set / 即時反映・再起動で既定値)</summary>
+      <div class="row" style="margin:10px 0 4px">
+        <button id="btnParamLoad" disabled>現在値を読み込み</button>
+      </div>
+      <div id="paramGroups"></div>
+    </details>
   </div>
 
   <div class="card">
@@ -236,7 +250,7 @@ function setConnected(on, label) {
   $("btnConnect").disabled = on || !("serial" in navigator);
   $("btnBle").disabled = on || !("bluetooth" in navigator);
   $("btnDisconnect").disabled = !on;
-  for (const el of document.querySelectorAll("button.mode, #btnStart, #btnStop, #btnStatus, #btnMistOn, #btnMistOff")) {
+  for (const el of document.querySelectorAll("button.mode, #btnStart, #btnStop, #btnStatus, #btnMistOn, #btnMistOff, #btnParamLoad")) {
     el.disabled = !on;
   }
   for (const el of document.querySelectorAll("input[type=range]")) {
@@ -280,6 +294,13 @@ function feedData(text) {
     if (line.length === 0) continue;
     const cls = line.startsWith("ok:") ? "ok" : line.startsWith("error:") ? "err" : "";
     appendLog(line, cls);
+    // "name = value" / "ok: name = value" をパラメータGUIへ反映する
+    const m = line.match(/^(?:ok: )?([a-z0-9]+(?:\.[a-z0-9]+)+) = ([0-9.]+)$/);
+    if (m && paramInputs[m[1]]) {
+      const p = paramInputs[m[1]];
+      p.input.value = m[2];
+      p.val.textContent = p.fmt(m[2]);
+    }
   }
 }
 
@@ -404,6 +425,100 @@ function makeSlider(container, prefix, ch) {
 
 const ledInputs = LED_CHANNELS.map((ch) => makeSlider($("ledSliders"), "led", ch));
 const fanInputs = FAN_CHANNELS.map((ch) => makeSlider($("fanSliders"), "fan", ch));
+
+// ---- パラメータ調整GUI (set コマンド) ----
+// def はファームウェアの既定値 (effects_config.cpp と一致させる)
+const LVL = { min: 0, max: 1, step: 0.01 };          // 輝度・しきい値 0..1
+const ENVP = { min: 100, max: 10000, step: 100 };    // うねり周期 ms
+const CHP = { min: 20, max: 3000, step: 10 };        // 揺らぎ周期 ms
+
+function flickerDefs(prefix, mn, mx, pmin, pmax, periods) {
+  const pr = periods || CHP;
+  return [
+    { name: prefix + ".min", def: mn, ...LVL },
+    { name: prefix + ".max", def: mx, ...LVL },
+    { name: prefix + ".pmin", def: pmin, ...pr },
+    { name: prefix + ".pmax", def: pmax, ...pr },
+  ];
+}
+
+const PARAM_GROUPS = [
+  { title: "うねり (エンベロープ)", params: [
+    ...flickerDefs("flame", 0.12, 1.0, 1500, 4000, ENVP),
+    ...flickerDefs("fire", 0.30, 1.0, 1500, 5000, ENVP),
+  ]},
+  { title: "ミスト・搬送ファン", params: [
+    { name: "mist.on", def: 0.65, ...LVL },
+    { name: "mist.off", def: 0.40, ...LVL },
+    { name: "smoke.min", def: 0.30, ...LVL },
+    { name: "smoke.max", def: 1.00, ...LVL },
+  ]},
+  { title: "噴射LEDの揺らぎ", params: [
+    ...flickerDefs("main", 0.70, 1.0, 100, 300),
+    ...flickerDefs("orange", 0.30, 1.0, 50, 200),
+    ...flickerDefs("red", 0.10, 0.7, 150, 500),
+  ]},
+  { title: "着弾LEDの揺らぎ", params: [
+    ...flickerDefs("fireorange", 0.40, 1.0, 120, 400),
+    ...flickerDefs("firered", 0.10, 0.6, 200, 700),
+  ]},
+  { title: "煙揺らぎファン", params: [
+    ...flickerDefs("faneffect", 0.30, 1.0, 400, 1500, ENVP),
+  ]},
+];
+
+const paramInputs = {};
+
+function makeParamRow(container, def) {
+  const row = document.createElement("div");
+  row.className = "slider-row";
+  const val = document.createElement("span");
+  val.className = "pct";
+  const input = document.createElement("input");
+  input.type = "range";
+  input.min = def.min; input.max = def.max; input.step = def.step;
+  input.value = def.def;
+  input.disabled = true;
+  const label = document.createElement("label");
+  label.textContent = def.name;
+  const fmt = (v) => def.step < 1 ? Number(v).toFixed(2) : String(Math.round(Number(v)));
+  val.textContent = fmt(def.def);
+
+  let timer = null;
+  let pending = null;
+  const flush = () => {
+    timer = null;
+    if (pending !== null) {
+      send(`set ${def.name} ${pending}`);
+      pending = null;
+    }
+  };
+  input.addEventListener("input", () => {
+    val.textContent = fmt(input.value);
+    pending = fmt(input.value);
+    if (!timer) {
+      flush();
+      timer = setTimeout(flush, 150);
+    }
+  });
+
+  row.append(label, input, val);
+  container.appendChild(row);
+  paramInputs[def.name] = { input, val, fmt };
+}
+
+{
+  const root = $("paramGroups");
+  for (const g of PARAM_GROUPS) {
+    const h = document.createElement("div");
+    h.className = "param-h";
+    h.textContent = g.title;
+    root.appendChild(h);
+    for (const p of g.params) makeParamRow(root, p);
+  }
+}
+
+$("btnParamLoad").addEventListener("click", () => send("set"));
 
 function resetSliders() {
   for (const el of [...ledInputs, ...fanInputs]) {
