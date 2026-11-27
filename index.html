@@ -169,6 +169,8 @@
       <summary>パラメータ調整 (set / 即時反映・再起動で既定値)</summary>
       <div class="row" style="margin:10px 0 4px">
         <button id="btnParamLoad" disabled>現在値を読み込み</button>
+        <button id="btnParamSave" disabled>フラッシュに保存</button>
+        <button id="btnParamReset" disabled>既定値に戻す</button>
       </div>
       <div id="paramGroups"></div>
     </details>
@@ -250,7 +252,7 @@ function setConnected(on, label) {
   $("btnConnect").disabled = on || !("serial" in navigator);
   $("btnBle").disabled = on || !("bluetooth" in navigator);
   $("btnDisconnect").disabled = !on;
-  for (const el of document.querySelectorAll("button.mode, #btnStart, #btnStop, #btnStatus, #btnMistOn, #btnMistOff, #btnParamLoad")) {
+  for (const el of document.querySelectorAll("button.mode, #btnStart, #btnStop, #btnStatus, #btnMistOn, #btnMistOff, #btnParamLoad, #btnParamSave, #btnParamReset")) {
     el.disabled = !on;
   }
   for (const el of document.querySelectorAll("input[type=range]")) {
@@ -517,6 +519,11 @@ function makeParamRow(container, def) {
 }
 
 $("btnParamLoad").addEventListener("click", () => send("set"));
+$("btnParamSave").addEventListener("click", () => send("save"));
+$("btnParamReset").addEventListener("click", async () => {
+  await send("reset");
+  send("set");  // 既定値に戻った値をGUIへ反映
+});
 
 function resetSliders() {
   for (const el of [...ledInputs, ...fanInputs]) {
